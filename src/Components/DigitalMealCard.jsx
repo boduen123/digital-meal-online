@@ -11,7 +11,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import axios from 'axios';
 import toast from 'react-hot-toast';
-
+//// update meal card
 // ==================== AXIOS CONFIG ====================
 const api = axios.create({
   baseURL: "http://localhost:5000/api",
@@ -1196,7 +1196,7 @@ const ShareMealModal = ({ plan, onShare, onClose }) => {
 };
 
 // ==================== PAYMENT SUCCESS MODAL ====================
-const PaymentSuccessModal = ({ amount, onClose }) => {
+const PaymentSuccessModal = ({ amount, walletType = 'meal', onClose }) => {
   useEffect(() => {
     const timer = setTimeout(onClose, 2500);
     return () => clearTimeout(timer);
@@ -1209,7 +1209,7 @@ const PaymentSuccessModal = ({ amount, onClose }) => {
           <FaCheckCircle className="text-white text-4xl" />
         </motion.div>
         <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Payment Successful!</h3>
-        <p className="text-gray-600 dark:text-gray-400 mb-2">RWF {formatAmount(amount)} added to your Meal Wallet.</p>
+        <p className="text-gray-600 dark:text-gray-400 mb-2">RWF {formatAmount(amount)} added to your {walletType === 'meal' ? 'Meal' : 'Flexie'} Wallet.</p>
         <motion.div initial={{ width: 0 }} animate={{ width: '100%' }} transition={{ duration: 2.5 }} className="h-1 bg-green-500 rounded-full mt-4" />
       </motion.div>
     </motion.div>
@@ -1836,7 +1836,7 @@ const EnhancedPaymentModal = ({ defaultAmount = 10000, onPay, onClose, processin
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
       <motion.div variants={modalMotion} initial="initial" animate="animate" exit="exit" onClick={e => e.stopPropagation()} className="w-full max-w-md bg-white dark:bg-gray-900 rounded-3xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
-        <h3 className="text-2xl font-bold text-center mb-6 text-gray-900 dark:text-white">Add Money to Card</h3>
+        <h3 className="text-2xl font-bold text-center mb-6 text-gray-900 dark:text-white">Add Money to {activeWalletTab === 'meal' ? 'Meal' : 'Flexie'} Wallet</h3>
 
         <div className="space-y-4">
           <div>
@@ -2887,6 +2887,7 @@ function IgifuDashboardMainApp() {
   const [paymentDefaultAmount, setPaymentDefaultAmount] = useState(10000);
   const [showPaymentSuccess, setShowPaymentSuccess] = useState(false);
   const [lastPaymentAmount, setLastPaymentAmount] = useState(0); // For EnhancedPaymentModal
+  const [lastPaymentWallet, setLastPaymentWallet] = useState('meal');
   const [showUnlockModal, setShowUnlockModal] = useState(false);
   const [showExchangeModal, setShowExchangeModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
@@ -3020,6 +3021,7 @@ function IgifuDashboardMainApp() {
         [walletType]: (Number(prev[walletType]) || 0) + Number(amount)
       }));
       setActiveWalletTab(walletType); // Switch to the wallet that was topped up
+      setLastPaymentWallet(walletType);
 
       await api.post('/student/topup-wallet', { amount, walletType, paymentMethod: method, paymentPhone: phone });
       setLastPaymentAmount(amount);
@@ -3031,7 +3033,7 @@ function IgifuDashboardMainApp() {
       setPaymentProcessing(false);
     }
     setShowPaymentSuccess(true);
-    showToast(`RWF ${formatAmount(amount)} has been added to your meal wallet.`, "success");
+    showToast(`RWF ${formatAmount(amount)} has been added to your ${walletType === 'meal' ? 'Meal' : 'Flexie'} wallet.`, "success");
   };
 
   const handlePaymentSuccessClose = () => {
@@ -3371,7 +3373,7 @@ function IgifuDashboardMainApp() {
       <AnimatePresence>
         {showAndroidPrompt && <AndroidPromptModal onDownload={handleDownloadApp} onContinue={handleContinueWeb} />}
         {showEnhancedPayment && <EnhancedPaymentModal defaultAmount={paymentDefaultAmount} onPay={handlePaymentComplete} onClose={() => { setShowEnhancedPayment(false); setPaymentProcessing(false); }} processing={paymentProcessing} setProcessing={setPaymentProcessing} activeWalletTab={activeWalletTab} />} {/* Pass activeWalletTab */}
-        {showPaymentSuccess && <PaymentSuccessModal amount={lastPaymentAmount} onClose={handlePaymentSuccessClose} />}
+        {showPaymentSuccess && <PaymentSuccessModal amount={lastPaymentAmount} walletType={lastPaymentWallet} onClose={handlePaymentSuccessClose} />}
         {showUnlockModal && <UnlockCardModal onSuccess={handleUpdateCardLockStatus} onCancel={handleUnlockCancel} />} {/* onCancel just closes the modal */}
         {showExchangeModal && <WalletExchangeModal wallets={wallets} onExchange={handleWalletExchange} onClose={() => setShowExchangeModal(false)} />}
         {showShareModal && selectedSharePlan && <ShareMealModal plan={selectedSharePlan} onShare={handleShareMeal} onClose={() => { setShowShareModal(false); setSelectedSharePlan(null); }} />}
