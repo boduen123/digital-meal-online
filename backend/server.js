@@ -1,4 +1,4 @@
-// c:/Users/Full-stack/Downloads/gg/backend/server.js
+
 
 const express = require('express');
 const cors = require('cors');
@@ -43,6 +43,7 @@ const verifyToken = (req, res, next) => {
         req.user = decoded; // Decoded payload: { id, role, email }
         next();
     } catch (error) {
+        console.error("Token verification failed:", error.message);
         res.status(401).json({ message: 'Invalid token.' });
     }
 };
@@ -169,6 +170,16 @@ app.get('/api/restaurants', async (req, res) => {
     }
 });
 
+app.get('/api/transactions', verifyToken, async (req, res) => {
+    try {
+        // Fetch transactions for the logged-in user
+        const [transactions] = await pool.execute('SELECT * FROM transactions WHERE user_id = ? ORDER BY created_at DESC', [req.user.id]);
+        res.json(transactions);
+    } catch (error) {
+        res.status(500).json({ message: 'Server error fetching transactions' });
+    }
+});
+
 // ====================================================================
 // 6. STUDENT ROUTES
 // ====================================================================
@@ -212,6 +223,7 @@ app.post('/api/student/subscribe', verifyToken, isStudent, async (req, res) => {
             `INSERT INTO transactions (user_id, amount, type, method, status, reference_id) VALUES (?, ?, ?, ?, ?, ?)`,
             [studentId, pricePaid, 'subscription_payment', paymentMethod, 'completed', `sub_${result.insertId}`]
         );
+        await connection.execute(`UPDATE student_profiles SET meal_wallet_balance = meal_wallet_balance + ? WHERE user_id = ?`, [pricePaid, studentId]);
         await connection.commit();
         res.status(201).json({ message: 'Subscription successful!', subscriptionId: result.insertId });
     } catch (error) {
@@ -225,35 +237,78 @@ app.post('/api/student/subscribe', verifyToken, isStudent, async (req, res) => {
 app.post('/api/student/order', verifyToken, isStudent, async (req, res) => {
     const { restaurantId, subscriptionId, plates } = req.body;
     const studentId = req.user.id;
-    try {
-        const [result] = await pool.execute(
-            'INSERT INTO orders (student_id, restaurant_id, subscription_id, plates, status) VALUES (?, ?, ?, ?, ?)',
-            [studentId, restaurantId, subscriptionId, plates, 'pending']
-        );
-        res.status(201).json({ message: 'Order placed successfully!', orderId: result.insertId });
-    } catch (error) {
-        res.status(500).json({ message: 'Server error placing order.' });
-    }
-});
-
-app.post('/api/student/topup-wallet', verifyToken, isStudent, async (req, res) => {
-    const { amount, walletType, paymentMethod, paymentPhone } = req.body;
-    const studentId = req.user.id;
-    const walletColumn = walletType === 'meal' ? 'meal_wallet_balance' : 'flexie_wallet_balance';
     const connection = await pool.getConnection();
     try {
         await connection.beginTransaction();
-        await connection.execute(`UPDATE student_profiles SET ${walletColumn} = ${walletColumn} + ? WHERE user_id = ?`, [amount, studentId]);
-        await connection.execute(`INSERT INTO transactions (user_id, amount, type, method, status, reference_id) VALUES (?, ?, 'topup', ?, 'completed', ?)`, [studentId, amount, paymentMethod, `topup_${Date.now()}`]);
+
+        // 1. Get Subscription Details & Calculate Cost
+        const [subs] = await connection.execute('SELECT * FROM subscriptions WHERE id = ? AND student_id = ? FOR UPDATE', [subscriptionId, studentId]);
+        if (subs.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ message: 'Subscription not found.' });
+        }
+        const sub = subs[0];
+        const platesToOrder = Number(plates);
+        const costPerPlate = Number(sub.price_paid) / Number(sub.total_plates);
+        const totalCost = costPerPlate * platesToOrder;
+        const currentUsedPlates = sub.used_plates;
+
+        // 2. Deduct Balance from student_profiles
+        await connection.execute('UPDATE student_profiles SET meal_wallet_balance = meal_wallet_balance - ? WHERE user_id = ?', [totalCost, studentId]);
+
+        // 3. Update Plates (Reduce available by increasing used)
+        await connection.execute('UPDATE subscriptions SET used_plates = used_plates + ? WHERE id = ?', [platesToOrder, subscriptionId]);
+
+        for (let i = 0; i < platesToOrder; i++) {
+            await connection.execute(
+                'INSERT INTO meal_usage_logs (subscription_id, student_id, restaurant_id, meal_index) VALUES (?, ?, ?, ?)',
+                [subscriptionId, studentId, restaurantId, currentUsedPlates + i]
+            );
+        }
+
+        // 4. Create Order
+        const [result] = await pool.execute(
+            'INSERT INTO orders (student_id, restaurant_id, subscription_id, plates, status) VALUES (?, ?, ?, ?, ?)',
+            [studentId, restaurantId, subscriptionId, platesToOrder, 'pending']
+        );
+
         await connection.commit();
-        res.json({ message: 'Wallet topped up successfully.' });
+        res.status(201).json({ message: 'Order placed successfully!', orderId: result.insertId });
     } catch (error) {
         await connection.rollback();
-        res.status(500).json({ message: 'Server error during top-up.' });
+        console.error("Order error:", error);
+        res.status(500).json({ message: 'Server error placing order.' });
     } finally {
         connection.release();
     }
 });
+
+// app.post('/api/student/topup-wallet', verifyToken, isStudent, async (req, res) => {
+//     const { amount, walletType, paymentMethod, paymentPhone } = req.body;
+//     const studentId = req.user.id;
+
+//     // Ensure amount is a valid number
+//     const topUpAmount = parseFloat(amount);
+//     if (isNaN(topUpAmount) || topUpAmount <= 0) {
+//         return res.status(400).json({ message: 'Invalid amount.' });
+//     }
+
+//     const walletColumn = walletType === 'meal' ? 'meal_wallet_balance' : 'flexie_wallet_balance';
+//     const connection = await pool.getConnection();
+//     try {
+//         await connection.beginTransaction();
+//         await connection.execute(`UPDATE student_profiles SET ${walletColumn} = ${walletColumn} + ? WHERE user_id = ?`, [topUpAmount, studentId]);
+//         await connection.execute(`INSERT INTO transactions (user_id, amount, type, method, status, reference_id) VALUES (?, ?, 'topup', ?, 'completed', ?)`, [studentId, topUpAmount, paymentMethod, `topup_${Date.now()}`]);
+//         await connection.commit();
+//         res.json({ message: 'Wallet topped up successfully.' });
+//     } catch (error) {
+//         await connection.rollback();
+//         console.error("Topup error:", error);
+//         res.status(500).json({ message: 'Server error during top-up.' });
+//     } finally {
+//         connection.release();
+//     }
+// });
 
 app.post('/api/student/exchange-wallets', verifyToken, isStudent, async (req, res) => {
     const { fromWallet, toWallet, amount } = req.body;
@@ -403,6 +458,23 @@ app.post('/api/restaurant/subscribers/use-meal', verifyToken, isRestaurantOwner,
         res.status(500).json({ message: error.message || 'Failed to use meal.' });
     } finally {
         connection.release();
+    }
+});
+
+app.get('/api/restaurant/subscribers', verifyToken, isRestaurantOwner, async (req, res) => {
+    const restaurantId = req.restaurantId;
+    try {
+        const [subscribers] = await pool.execute(`
+            SELECT s.*, u.username as student_name, u.email as student_email, u.phone as student_phone, mp.name as plan_name
+            FROM subscriptions s
+            JOIN users u ON s.student_id = u.id
+            JOIN meal_plans mp ON s.plan_id = mp.id
+            WHERE s.restaurant_id = ?
+            ORDER BY s.start_date DESC
+        `, [restaurantId]);
+        res.json(subscribers);
+    } catch (error) {
+        res.status(500).json({ message: 'Server error fetching subscribers.' });
     }
 });
 

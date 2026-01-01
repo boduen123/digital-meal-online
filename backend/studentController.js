@@ -65,16 +65,49 @@ const subscribeToPlan = async (req, res) => {
 const placeOrder = async (req, res) => {
     const { restaurantId, subscriptionId, plates } = req.body;
     const studentId = req.user.id;
+    const connection = await pool.getConnection();
     try {
-        // In a real app, you'd verify the student has enough plates left on their subscription
+        await connection.beginTransaction();
+
+        // 1. Get Subscription Details & Calculate Cost
+        const [subs] = await connection.execute('SELECT * FROM subscriptions WHERE id = ? AND student_id = ? FOR UPDATE', [subscriptionId, studentId]);
+        if (subs.length === 0) {
+            await connection.rollback();
+            return res.status(404).json({ message: 'Subscription not found.' });
+        }
+        const sub = subs[0];
+        const platesToOrder = Number(plates);
+        const costPerPlate = Number(sub.price_paid) / Number(sub.total_plates);
+        const totalCost = costPerPlate * platesToOrder;
+        const currentUsedPlates = sub.used_plates;
+
+        // 2. Deduct Balance from student_profiles
+        await connection.execute('UPDATE student_profiles SET meal_wallet_balance = meal_wallet_balance - ? WHERE user_id = ?', [totalCost, studentId]);
+
+        // 3. Update Plates
+        await connection.execute('UPDATE subscriptions SET used_plates = used_plates + ? WHERE id = ?', [platesToOrder, subscriptionId]);
+
+        for (let i = 0; i < platesToOrder; i++) {
+            await connection.execute(
+                'INSERT INTO meal_usage_logs (subscription_id, student_id, restaurant_id, meal_index) VALUES (?, ?, ?, ?)',
+                [subscriptionId, studentId, restaurantId, currentUsedPlates + i]
+            );
+        }
+
+        // 4. Create Order
         const [result] = await pool.execute(
             'INSERT INTO orders (student_id, restaurant_id, subscription_id, plates, status) VALUES (?, ?, ?, ?, ?)',
-            [studentId, restaurantId, subscriptionId, plates, 'pending']
+            [studentId, restaurantId, subscriptionId, platesToOrder, 'pending']
         );
+
+        await connection.commit();
         res.status(201).json({ message: 'Order placed successfully!', orderId: result.insertId });
     } catch (error) {
+        await connection.rollback();
         console.error("Place order error:", error);
         res.status(500).json({ message: 'Server error placing order.' });
+    } finally {
+        connection.release();
     }
 };
 
