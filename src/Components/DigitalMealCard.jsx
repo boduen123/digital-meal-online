@@ -17,7 +17,7 @@ const api = axios.create({
   baseURL: "http://localhost:5000/api",
 });
 api.interceptors.request.use(config => {
-  const token = localStorage.getItem('authToken');
+  const token = localStorage.getItem('token') || localStorage.getItem('authToken');
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
@@ -129,7 +129,7 @@ const MealPlanCard = ({ plan, onUseMeal, onViewDetails, onShare }) => {
     setOrderStatus('pending');
     try {
       const response = await api.post('/student/order', {
-        restaurantId: plan.restaurant_id, // Use restaurant_id from plan
+        restaurantId: plan.restaurantId, // Use restaurantId from plan
         subscriptionId: plan.id,
         plates: orderQuantity,
       });
@@ -367,9 +367,8 @@ const MealPlanCard = ({ plan, onUseMeal, onViewDetails, onShare }) => {
 
 
 // ==================== IGIFU CARD SCREEN (REDESIGNED) ====================
-const DigitalMealCard = ({ selectedCard, wallets, isLocked, onBuyCard, onTopUp, onExchange, onUnlock, purchasedPlans = [], onNavigateToRestaurants, onSelectCard }) => {
+const DigitalMealCard = ({ selectedCard, wallets, isLocked, onBuyCard, onTopUp, onExchange, onUnlock, purchasedPlans = [], onNavigateToRestaurants, onSelectCard, activeWalletTab, setActiveWalletTab }) => {
   const totalBalance = wallets.meal + wallets.flexie;
-  const [activeWalletTab, setActiveWalletTab] = useState('meal');
   const [showUnlockPrompt, setShowUnlockPrompt] = useState(true);
   const [unlockMethod, setUnlockMethod] = useState('fingerprint');
   const [passcode, setPasscode] = useState('');
@@ -676,7 +675,7 @@ const MealPlanOrderCard = ({ plan, onNavigateToRestaurants, onOrderPlaced }) => 
     setOrderStatus('pending');
     try {
       const response = await api.post('/student/order', {
-        restaurantId: plan.restaurant_id, // Use restaurant_id from plan
+        restaurantId: plan.restaurantId, // Use restaurantId from plan
         subscriptionId: plan.id,
         plates: orderQuantity,
       });
@@ -709,11 +708,14 @@ const MealPlanOrderCard = ({ plan, onNavigateToRestaurants, onOrderPlaced }) => 
           <h3 className="text-lg font-bold text-white">{plan.restaurantName}</h3>
           <p className="text-sm text-gray-400">{plan.planName || plan.planType}</p>
         </div>
-        {plan.planTier && (
-          <span className="bg-blue-500/20 text-blue-400 text-xs px-3 py-1 rounded-full font-bold uppercase border border-blue-500/30">
-            {plan.planTier}
-          </span>
-        )}
+        <div className="flex flex-col items-end gap-1">
+          {plan.planTier && (
+            <span className="bg-blue-500/20 text-blue-400 text-xs px-3 py-1 rounded-full font-bold uppercase border border-blue-500/30">
+              {plan.planTier}
+            </span>
+          )}
+          <span className="text-white font-bold text-sm">RWF {formatAmount(plan.price)}</span>
+        </div>
       </div>
 
       {/* Plates Summary */}
@@ -1839,7 +1841,16 @@ const EnhancedPaymentModal = ({ defaultAmount = 10000, onPay, onClose, processin
         <div className="space-y-4">
           <div>
             <label className="text-sm font-bold text-gray-700 dark:text-gray-300 mb-2 block">Amount (RWF)</label>
-            <input type="number" min="500" value={amount} onChange={(e) => setAmount(parseInt(e.target.value) || 0)} placeholder="Enter amount e.g., 10000" className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white" />
+            <input 
+              type="number" 
+              min="500" 
+              value={amount} 
+              onChange={(e) => setAmount(parseInt(e.target.value) || 0)} 
+              placeholder="Enter amount e.g., 10000" 
+              className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+              autoFocus
+              onFocus={(e) => e.target.select()}
+            />
           </div>
 
           <div>
@@ -2045,174 +2056,58 @@ const RestozPage = ({ showToast, onOrder }) => {
     priceMax: 999999,
   });
 
-  const restaurantsSeed = useMemo(() => ([
-    {
-      id: 1,
-      name: "Campus Bites",
-      campus: "Huye Campus",
-      description: "Fresh, healthy meals prepared daily with local ingredients",
-      fullDescription: "Campus Bites has served students for 10+ years. We specialize in nutritious, affordable meals for student budgets, blending traditional Rwandan dishes with international flavors.",
-      plans: [
-        { name: "Basic", type: "Month", price: 25000, plates: 1, tier: "basic" },
-        { name: "Standard", type: "Month", price: 45000, plates: 2, tier: "standard" },
-        { name: "Basic", type: "Half-month", price: 14000, plates: 1, tier: "basic" },
-        { name: "Standard", type: "Half-month", price: 26000, plates: 2, tier: "standard" },
-      ],
-      walkTime: "3 mins",
-      selfService: false,
-      isFav: true,
-      rating: 4.8,
-      image: "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=800&q=80",
-      features: ["WiFi", "Study Area", "Takeaway"],
-      specialties: [{ name: "Brochettes", icon: <FaLeaf className="text-green-600" /> }, { name: "Salads", icon: <FaLeaf className="text-green-600" /> }],
-      popularDishes: [
-        { name: "Chicken Brochette", description: "Grilled chicken skewers", price: 3500, icon: <FaLeaf className="text-white" /> },
-        { name: "Veggie Bowl", description: "Fresh vegetables with rice", price: 2500, icon: <FaLeaf className="text-white" /> },
-      ],
-      phone: "+250 788 123 456",
-      email: "info@campusbites.rw"
-    },
-    {
-      id: 2,
-      name: "Inka Kitchen",
-      campus: "Remera Campus",
-      description: "Authentic Rwandan cuisine with a modern twist",
-      fullDescription: "Inka Kitchen brings the best of Rwandan culinary traditions with contemporary style. Fresh local ingredients, memorable dishes.",
-      plans: [
-        { name: "Standard", type: "Month", price: 50000, plates: 1, tier: "standard" },
-        { name: "Premier", type: "Month", price: 85000, plates: 2, tier: "premier" },
-        { name: "Exclusive", type: "Month", price: 120000, plates: 3, tier: "exclusive" },
-        { name: "Standard", type: "Half-month", price: 28000, plates: 1, tier: "standard" },
-        { name: "Premier", type: "Half-month", price: 48000, plates: 2, tier: "premier" },
-      ],
-      walkTime: "10 mins",
-      selfService: true,
-      isFav: false,
-      rating: 4.5,
-      image: "https://images.unsplash.com/photo-1552566626-52f8b828add9?w=800&q=80",
-      features: ["Outdoor Seating", "Vegan Options", "Delivery"],
-      specialties: [{ name: "Isombe", icon: <FaLeaf className="text-green-600" /> }],
-      popularDishes: [
-        { name: "Isombe Special", description: "Cassava leaves with fish", price: 4500, icon: <FaLeaf className="text-white" /> },
-        { name: "Tilapia Grill", description: "Lake fish with ugali", price: 5500, icon: <FaLeaf className="text-white" /> }
-      ],
-      phone: "+250 788 234 567",
-      email: "order@inkakitchen.rw"
-    },
-    {
-      id: 3,
-      name: "UR - Nyarugenge Cafeteria",
-      campus: "Nyarugenge Campus",
-      description: "Affordable student meals and daily specials",
-      fullDescription: "Serving classic campus favorites and hearty Rwandan staples. Daily specials and combo deals for students.",
-      plans: [
-        { name: "Budget", type: "Month", price: 20000, plates: 1, tier: "budget" },
-        { name: "Basic", type: "Month", price: 35000, plates: 2, tier: "basic" },
-        { name: "Budget", type: "Half-month", price: 12000, plates: 1, tier: "budget" },
-        { name: "Basic", type: "Half-month", price: 20000, plates: 2, tier: "basic" },
-      ],
-      walkTime: "5 mins",
-      selfService: true,
-      isFav: false,
-      rating: 4.2,
-      image: "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=800&q=80",
-      features: ["Quick Service", "Budget Friendly", "Takeaway"],
-      specialties: [{ name: "Beans & Rice", icon: <FaLeaf className="text-green-600" /> }],
-      popularDishes: [
-        { name: "Beans & Rice", description: "Classic combo", price: 1500, icon: <FaLeaf className="text-white" /> },
-        { name: "Beef with Chips", description: "Popular combo", price: 3000, icon: <FaLeaf className="text-white" /> }
-      ],
-      phone: "+250 788 111 222",
-      email: "cafeteria@ur.rw"
-    },
-    {
-      id: 4,
-      name: "Green Leaf Restaurant",
-      campus: "Kacyiru Campus",
-      description: "Healthy vegetarian and vegan options for health-conscious students",
-      fullDescription: "Green Leaf focuses on plant-based nutrition with delicious recipes that keep you energized throughout the day.",
-      plans: [
-        { name: "Basic", type: "Month", price: 30000, plates: 1, tier: "basic" },
-        { name: "Standard", type: "Month", price: 55000, plates: 2, tier: "standard" },
-        { name: "Premier", type: "Month", price: 75000, plates: 3, tier: "premier" },
-        { name: "Basic", type: "Half-month", price: 18000, plates: 1, tier: "basic" },
-        { name: "Standard", type: "Half-month", price: 32000, plates: 2, tier: "standard" },
-      ],
-      walkTime: "7 mins",
-      selfService: false,
-      isFav: false,
-      rating: 4.6,
-      image: "https://images.unsplash.com/photo-1565299624946-b28f40a0ae38?w=800&q=80",
-      features: ["Vegan", "Organic", "Healthy"],
-      specialties: [{ name: "Veggie Stew", icon: <FaLeaf className="text-green-600" /> }, { name: "Fruit Salads", icon: <FaLeaf className="text-green-600" /> }],
-      popularDishes: [
-        { name: "Buddha Bowl", description: "Mixed veggies & quinoa", price: 3000, icon: <FaLeaf className="text-white" /> },
-        { name: "Fresh Smoothie", description: "Tropical fruits blend", price: 2000, icon: <FaLeaf className="text-white" /> }
-      ],
-      phone: "+250 788 333 444",
-      email: "info@greenleaf.rw"
-    },
-    {
-      id: 5,
-      name: "Student Hub Canteen",
-      campus: "Kimironko Campus",
-      description: "Budget-friendly meals with generous portions",
-      fullDescription: "The go-to place for students who want filling meals at the lowest prices. We understand student budgets!",
-      plans: [
-        { name: "Budget", type: "Month", price: 18000, plates: 1, tier: "budget" },
-        { name: "Budget", type: "Half-month", price: 10000, plates: 1, tier: "budget" },
-        { name: "Basic", type: "Month", price: 32000, plates: 2, tier: "basic" },
-      ],
-      walkTime: "2 mins",
-      selfService: true,
-      isFav: false,
-      rating: 4.0,
-      image: "https://images.unsplash.com/photo-1567521464027-f127ff144326?w=800&q=80",
-      features: ["Cheapest", "Large Portions", "Fast Service"],
-      specialties: [{ name: "Rice & Beans", icon: <FaLeaf className="text-green-600" /> }],
-      popularDishes: [
-        { name: "Full Plate Special", description: "Rice, beans, meat, veggies", price: 1200, icon: <FaLeaf className="text-white" /> },
-        { name: "Chapati Combo", description: "Chapati with stew", price: 1500, icon: <FaLeaf className="text-white" /> }
-      ],
-      phone: "+250 788 555 666",
-      email: "order@studenthub.rw"
-    },
-    {
-      id: 6,
-      name: "Royal Feast",
-      campus: "Gishushu Campus",
-      description: "Premium dining experience with exclusive menu options",
-      fullDescription: "Royal Feast offers a luxury dining experience for students who want the best. Our chefs prepare gourmet meals daily.",
-      plans: [
-        { name: "Premier", type: "Month", price: 80000, plates: 1, tier: "premier" },
-        { name: "Exclusive", type: "Month", price: 140000, plates: 2, tier: "exclusive" },
-        { name: "VIP", type: "Month", price: 200000, plates: 3, tier: "vip" },
-        { name: "Premier", type: "Half-month", price: 45000, plates: 1, tier: "premier" },
-        { name: "Exclusive", type: "Half-month", price: 80000, plates: 2, tier: "exclusive" },
-      ],
-      walkTime: "8 mins",
-      selfService: false,
-      isFav: false,
-      rating: 4.9,
-      image: "https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=800&q=80",
-      features: ["Premium", "AC", "Private Seating"],
-      specialties: [{ name: "Steak", icon: <FaLeaf className="text-green-600" /> }, { name: "Seafood", icon: <FaLeaf className="text-green-600" /> }],
-      popularDishes: [
-        { name: "Grilled Steak", description: "Premium beef steak", price: 8000, icon: <FaLeaf className="text-white" /> },
-        { name: "Seafood Platter", description: "Mixed seafood selection", price: 12000, icon: <FaLeaf className="text-white" /> }
-      ],
-      phone: "+250 788 777 888",
-      email: "vip@royalfeast.rw"
-    },
-  ]), []);
-
-  const [restaurants, setRestaurants] = useState(restaurantsSeed);
-  const [filteredRestaurants, setFilteredRestaurants] = useState(restaurantsSeed);
+  const [restaurants, setRestaurants] = useState([]);
+  const [filteredRestaurants, setFilteredRestaurants] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   const campuses = useMemo(() => {
     const unique = [...new Set(restaurants.map(r => r.campus))];
     return unique.sort();
   }, [restaurants]);
+
+  useEffect(() => {
+    const fetchRestaurants = async () => {
+      try {
+        const response = await api.get('/restaurants');
+        const mappedData = response.data.map(r => ({
+          id: r.id,
+          name: r.name,
+          campus: r.campus || "Main Campus",
+          description: r.description || "No description available",
+          fullDescription: r.description || "No description available",
+          plans: (r.plans || []).filter(p => p.is_active !== 0).map(p => ({
+            id: p.id,
+            name: p.name,
+            type: p.type,
+            price: Number(p.price),
+            plates: Math.max(1, Math.round(p.total_plates / ((p.duration_days || 30) * 2))),
+            totalMeals: p.total_plates,
+            tier: p.tier || 'basic',
+            duration_days: p.duration_days
+          })),
+          walkTime: r.walk_time || "N/A",
+          selfService: true,
+          isFav: false,
+          rating: Number(r.rating) || 4.5,
+          image: r.image_url || "https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=800&q=80",
+          features: ["WiFi", "Takeaway"],
+          specialties: [],
+          popularDishes: [],
+          phone: r.contact_phone,
+          email: r.contact_email
+        }));
+        setRestaurants(mappedData);
+        setFilteredRestaurants(mappedData);
+      } catch (error) {
+        console.error("Failed to fetch restaurants", error);
+        toast.error("Could not load restaurants");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchRestaurants();
+  }, []);
 
   useEffect(() => {
     let temp = [...restaurants];
@@ -2265,7 +2160,11 @@ const RestozPage = ({ showToast, onOrder }) => {
 
       <div className="p-3 sm:p-4">
         <div className="mx-auto w-full max-w-6xl">
-          {filteredRestaurants.length === 0 ? (
+          {loading ? (
+            <div className="flex justify-center py-20">
+              <FaSpinner className="text-4xl text-blue-500 animate-spin" />
+            </div>
+          ) : filteredRestaurants.length === 0 ? (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-12">
               <FaSearch className="text-4xl sm:text-6xl text-gray-300 dark:text-gray-600 mx-auto mb-4" />
               <h3 className="text-lg sm:text-xl font-bold text-gray-600 dark:text-gray-400 mb-2">No restaurants found</h3>
@@ -2287,7 +2186,17 @@ const RestozPage = ({ showToast, onOrder }) => {
 // ==================== SUBSCRIPTION PAYMENT MODAL ====================
 const SubscriptionPaymentModal = ({ restaurant, onClose, onSuccess, wallets }) => {
   const plans = restaurant.plans || [];
-  const [selectedPlanIndex, setSelectedPlanIndex] = useState(0);
+
+  // Determine default plan (prefer Month > Half-month > Weekly)
+  const getInitialState = () => {
+    const types = [...new Set(plans.map(p => p.type))];
+    const preferredType = ['Month', 'Half-month', 'Weekly'].find(t => types.includes(t)) || types[0] || 'Month';
+    const index = plans.findIndex(p => p.type === preferredType);
+    return { type: preferredType, index: index !== -1 ? index : 0 };
+  };
+
+  const initialState = getInitialState();
+  const [selectedPlanIndex, setSelectedPlanIndex] = useState(initialState.index);
   const [paymentMethod, setPaymentMethod] = useState('mtn');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [phoneError, setPhoneError] = useState('');
@@ -2349,7 +2258,7 @@ const SubscriptionPaymentModal = ({ restaurant, onClose, onSuccess, wallets }) =
 
   // Get unique plan types for tabs
   const planTypes = [...new Set(plans.map(p => p.type))];
-  const [activePlanType, setActivePlanType] = useState(planTypes[0] || 'Month');
+  const [activePlanType, setActivePlanType] = useState(initialState.type);
   const filteredPlans = plans.filter(p => p.type === activePlanType);
 
   // Step 1: Plan Selection - New Design with custom colors
@@ -2959,6 +2868,7 @@ function IgifuDashboardMainApp() {
   const [isCardLocked, setIsCardLocked] = useState(() => localStorage.getItem("cardLocked") === "true");
   const [activePage, setActivePage] = useState("Restoz");
   const [darkMode, setDarkMode] = useState(() => localStorage.getItem("theme") === "dark");
+  const [activeWalletTab, setActiveWalletTab] = useState('meal');
   const [greeting, setGreeting] = useState("Hello");
   const [notification, setNotification] = useState(null);
 
@@ -3059,7 +2969,7 @@ function IgifuDashboardMainApp() {
   };
 
   useEffect(() => { // Initial data fetch
-    const token = localStorage.getItem('authToken');
+    const token = localStorage.getItem('token') || localStorage.getItem('authToken');
     if (!token) {
       toast.error("You are not logged in. Please log in to view your data.");
       return; // Do not fetch data if there's no token
@@ -3104,6 +3014,13 @@ function IgifuDashboardMainApp() {
 
   const handlePaymentComplete = async (method, phone, amount, walletType = 'meal') => {
     try {
+      // Optimistic update to immediately display the new balance
+      setWallets(prev => ({
+        ...prev,
+        [walletType]: (Number(prev[walletType]) || 0) + Number(amount)
+      }));
+      setActiveWalletTab(walletType); // Switch to the wallet that was topped up
+
       await api.post('/student/topup-wallet', { amount, walletType, paymentMethod: method, paymentPhone: phone });
       setLastPaymentAmount(amount);
       setShowEnhancedPayment(false);
@@ -3277,6 +3194,8 @@ function IgifuDashboardMainApp() {
             purchasedPlans={purchasedPlans}
             onNavigateToRestaurants={() => setActivePage("Restoz")}
             onSelectCard={setSelectedCard} // Pass setSelectedCard to DigitalMealCard
+            activeWalletTab={activeWalletTab}
+            setActiveWalletTab={setActiveWalletTab}
           />
         </div>
       </motion.section>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import axios from "axios"; // Import Axios
+import axios from "axios"; // Import Axios   update  now
 import {
   FaLock,
   FaArrowRight,
