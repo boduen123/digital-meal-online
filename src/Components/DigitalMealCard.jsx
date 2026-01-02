@@ -378,7 +378,7 @@ const MealPlanCard = ({ plan, onUseMeal, onViewDetails, onShare }) => {
 
 
 // ==================== IGIFU CARD SCREEN (REDESIGNED) ====================
-const DigitalMealCard = ({ selectedCard, wallets, isLocked, onBuyCard, onTopUp, onExchange, onUnlock, purchasedPlans = [], onNavigateToRestaurants, onSelectCard, activeWalletTab, setActiveWalletTab }) => {
+const DigitalMealCard = ({ selectedCard, wallets, isLocked, onBuyCard, onTopUp, onExchange, onUnlock, purchasedPlans = [], onNavigateToRestaurants, onSelectCard, activeWalletTab, setActiveWalletTab, onOrderPlaced, addNotification }) => {
   const totalBalance = wallets.meal + wallets.flexie;
   const [showUnlockPrompt, setShowUnlockPrompt] = useState(true);
   const [unlockMethod, setUnlockMethod] = useState('fingerprint');
@@ -657,14 +657,14 @@ const DigitalMealCard = ({ selectedCard, wallets, isLocked, onBuyCard, onTopUp, 
 
       {/* Meal Plans with Order Functionality */}
       {currentCard && currentCard.plan && (
-        <MealPlanOrderCard plan={currentCard.plan} onNavigateToRestaurants={onNavigateToRestaurants} />
+        <MealPlanOrderCard plan={currentCard.plan} onNavigateToRestaurants={onNavigateToRestaurants} onOrderPlaced={onOrderPlaced} addNotification={addNotification} />
       )} {/* Pass isLocked prop if needed for MealPlanOrderCard */}
     </div>
   );
 };
 
 // ==================== MEAL PLAN ORDER CARD ====================
-const MealPlanOrderCard = ({ plan, onNavigateToRestaurants, onOrderPlaced }) => {
+const MealPlanOrderCard = ({ plan, onNavigateToRestaurants, onOrderPlaced, addNotification }) => {
   const totalMeals = plan.totalMeals;
   const usedCount = plan.usedMeals?.length || 0;
   const remaining = totalMeals - usedCount;
@@ -692,11 +692,38 @@ const MealPlanOrderCard = ({ plan, onNavigateToRestaurants, onOrderPlaced }) => 
       });
       setOrderId(response.data.orderId);
       toast.success("Order sent to restaurant!");
+      if (onOrderPlaced) onOrderPlaced();
       
+      if (addNotification) {
+        addNotification({
+          type: 'order',
+          title: 'Order Pending',
+          message: `Your order for ${orderQuantity} plate(s) at ${plan.restaurantName} is pending approval.`,
+          details: {
+            restaurant: plan.restaurantName,
+            plates: orderQuantity,
+            status: 'Pending',
+            orderId: response.data.orderId
+          }
+        });
+      }
+
       // Simulate restaurant approval for demo purposes
       setTimeout(() => {
         setOrderStatus('approved');
-        if (onOrderPlaced) onOrderPlaced();
+        if (addNotification) {
+          addNotification({
+            type: 'order',
+            title: 'Order Approved',
+            message: `Your order at ${plan.restaurantName} has been approved!`,
+            details: {
+              restaurant: plan.restaurantName,
+              plates: orderQuantity,
+              status: 'Approved',
+              orderId: response.data.orderId
+            }
+          });
+        }
       }, 3000);
 
     } catch (error) {
@@ -2873,6 +2900,66 @@ const PlanDetailsModal = ({ plan, onClose, onUseMeal }) => {
   );
 };
 
+// ==================== NOTIFICATION COMPONENTS ====================
+const NotificationList = ({ notifications, onClose, onSelect }) => {
+  return (
+    <motion.div initial={{ opacity: 0, y: 10, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 10, scale: 0.95 }} className="absolute top-16 right-4 w-80 sm:w-96 bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 z-50 overflow-hidden">
+      <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center">
+        <h3 className="font-bold text-gray-900 dark:text-white">Notifications</h3>
+        <button onClick={onClose} className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"><FaTimes /></button>
+      </div>
+      <div className="max-h-[60vh] overflow-y-auto">
+        {notifications.length === 0 ? (
+          <div className="p-8 text-center text-gray-500 dark:text-gray-400">
+            <FaBell className="mx-auto text-2xl mb-2 opacity-50" />
+            <p className="text-sm">No new notifications</p>
+          </div>
+        ) : (
+          notifications.map(notif => (
+            <div key={notif.id} onClick={() => onSelect(notif)} className={`p-4 border-b border-gray-100 dark:border-gray-700/50 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors ${!notif.read ? 'bg-blue-50/50 dark:bg-blue-900/10' : ''}`}>
+              <div className="flex gap-3">
+                <div className={`mt-1 w-2 h-2 rounded-full flex-shrink-0 ${!notif.read ? 'bg-blue-500' : 'bg-transparent'}`} />
+                <div>
+                  <h4 className="text-sm font-bold text-gray-900 dark:text-white mb-1">{notif.title}</h4>
+                  <p className="text-xs text-gray-600 dark:text-gray-400 line-clamp-2">{notif.message}</p>
+                  <span className="text-[10px] text-gray-400 mt-2 block">{notif.timestamp.toLocaleTimeString()}</span>
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+    </motion.div>
+  );
+};
+
+const NotificationDetailModal = ({ notification, onClose }) => {
+  if (!notification) return null;
+  const { details } = notification;
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[60] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4" onClick={onClose}>
+      <motion.div variants={modalMotion} initial="initial" animate="animate" exit="exit" onClick={e => e.stopPropagation()} className="w-full max-w-sm bg-white dark:bg-gray-900 rounded-2xl p-6 shadow-2xl">
+        <div className="text-center mb-6">
+          <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+            <FaInfoCircle className="text-2xl text-blue-600 dark:text-blue-400" />
+          </div>
+          <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">{notification.title}</h3>
+          <p className="text-sm text-gray-600 dark:text-gray-400">{notification.message}</p>
+        </div>
+        <div className="bg-gray-50 dark:bg-gray-800 rounded-xl p-4 space-y-3 mb-6">
+          {details.restaurant && <div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-gray-400">Restaurant</span><span className="font-medium text-gray-900 dark:text-white">{details.restaurant}</span></div>}
+          {details.plates && <div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-gray-400">Plates</span><span className="font-medium text-gray-900 dark:text-white">{details.plates}</span></div>}
+          {details.amount !== undefined && <div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-gray-400">Amount Paid</span><span className="font-bold text-gray-900 dark:text-white">RWF {formatAmount(details.amount)}</span></div>}
+          {details.balance !== undefined && <div className="flex justify-between text-sm border-t border-gray-200 dark:border-gray-700 pt-2 mt-2"><span className="text-gray-500 dark:text-gray-400">Remaining Balance</span><span className="font-bold text-green-600 dark:text-green-400">RWF {formatAmount(details.balance)}</span></div>}
+          {details.status && <div className="flex justify-between text-sm"><span className="text-gray-500 dark:text-gray-400">Status</span><span className={`font-bold ${details.status === 'Approved' ? 'text-green-500' : details.status === 'Rejected' ? 'text-red-500' : 'text-yellow-500'}`}>{details.status}</span></div>}
+        </div>
+        <motion.button whileTap={tapAnimation} onClick={onClose} className="w-full py-3 bg-blue-600 text-white rounded-xl font-bold">Close</motion.button>
+      </motion.div>
+    </motion.div>
+  );
+};
+
 // ==================== MAIN APP COMPONENT ====================
 function IgifuDashboardMainApp() {
   const [selectedCard, setSelectedCard] = useState(() => localStorage.getItem("selectedCard") || "No Card");
@@ -2885,7 +2972,7 @@ function IgifuDashboardMainApp() {
 
   const [wallets, setWallets] = useState(() => {
     const saved = localStorage.getItem("wallets");
-    return saved ? JSON.parse(saved) : { meal: 5000, flexie: 2000 };
+    return saved ? JSON.parse(saved) : { meal: 0, flexie: 0 };
   });
 
   const [purchasedPlans, setPurchasedPlans] = useState(() => {
@@ -2909,6 +2996,20 @@ function IgifuDashboardMainApp() {
   const [selectedPlanDetails, setSelectedPlanDetails] = useState(null);
   const [refreshDataTrigger, setRefreshDataTrigger] = useState(0); // To trigger data refetch
   const [showAndroidPrompt, setShowAndroidPrompt] = useState(false);
+
+  const [notifications, setNotifications] = useState([]);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [selectedNotification, setSelectedNotification] = useState(null);
+
+  const addNotification = (data) => {
+    const newNotif = {
+      id: Date.now(),
+      timestamp: new Date(),
+      read: false,
+      ...data
+    };
+    setNotifications(prev => [newNotif, ...prev]);
+  };
 
   useEffect(() => {
     const hours = new Date().getHours();
@@ -3045,6 +3146,16 @@ function IgifuDashboardMainApp() {
     }
     setShowPaymentSuccess(true);
     showToast(`RWF ${formatAmount(amount)} has been added to your ${walletType === 'meal' ? 'Meal' : 'Flexie'} wallet.`, "success");
+    addNotification({
+      type: 'payment',
+      title: 'Payment Completed',
+      message: `Top-up of RWF ${formatAmount(amount)} successful.`,
+      details: {
+        amount: amount,
+        balance: (Number(wallets[walletType]) || 0) + Number(amount),
+        status: 'Completed'
+      }
+    });
   };
 
   const handlePaymentSuccessClose = () => {
@@ -3137,6 +3248,17 @@ function IgifuDashboardMainApp() {
       setSelectedRestaurant(null);
       await fetchAllData(); // Refresh data after successful subscription
       setTimeout(() => setActivePage("MyIgifu"), 500);
+      addNotification({
+        type: 'subscription',
+        title: 'Subscription Purchased',
+        message: `You purchased ${plan.name} at ${restaurant.name}.`,
+        details: {
+          restaurant: restaurant.name,
+          plates: totalMeals,
+          amount: totalAmount,
+          balance: (wallets.meal + wallets.flexie) - totalAmount
+        }
+      });
     } catch (error) {
       let errorMessage = "An unexpected error occurred during subscription.";
       if (error.response) {
@@ -3182,6 +3304,18 @@ function IgifuDashboardMainApp() {
     setShowAndroidPrompt(false);
   };
 
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('user');
+    setSelectedCard("No Card");
+    setIsCardLocked(false);
+    setWallets({ meal: 0, flexie: 0 });
+    setPurchasedPlans([]);
+    showToast('Logged out successfully', 'info');
+    setTimeout(() => window.location.href = '/login', 1000);
+  };
+
   // ==================== PAGES ====================
   const MyIgifuPage = () => {
     return (
@@ -3209,6 +3343,8 @@ function IgifuDashboardMainApp() {
             onSelectCard={setSelectedCard} // Pass setSelectedCard to DigitalMealCard
             activeWalletTab={activeWalletTab}
             setActiveWalletTab={setActiveWalletTab}
+            onOrderPlaced={fetchAllData}
+            addNotification={addNotification}
           />
         </div>
       </motion.section>
@@ -3310,7 +3446,7 @@ function IgifuDashboardMainApp() {
             <FaChevronRight className="text-gray-400" />
           </motion.div>
 
-          <motion.div whileHover={{ scale: 1.02 }} whileTap={tapAnimation} onClick={() => { setSelectedCard("No Card"); setIsCardLocked(false); setWallets({ meal: 0, flexie: 0 }); setPurchasedPlans([]); showToast('Logged out successfully', 'info'); setActivePage("Restoz"); }} className="bg-red-50 dark:bg-red-900/20 rounded-xl sm:rounded-2xl p-4 border border-red-200 dark:border-red-700 flex items-center justify-between cursor-pointer">
+          <motion.div whileHover={{ scale: 1.02 }} whileTap={tapAnimation} onClick={handleLogout} className="bg-red-50 dark:bg-red-900/20 rounded-xl sm:rounded-2xl p-4 border border-red-200 dark:border-red-700 flex items-center justify-between cursor-pointer">
             <div className="flex items-center gap-3"><FaSignOutAlt className="text-xl sm:text-2xl text-red-600 dark:text-red-400" /><span className="font-medium text-red-600 dark:text-red-400 text-sm sm:text-base">Sign Out</span></div>
             <FaChevronRight className="text-red-400" />
           </motion.div>
@@ -3331,10 +3467,23 @@ function IgifuDashboardMainApp() {
           </div>
           <div className="flex items-center gap-2 sm:gap-3">
             <motion.button whileTap={tapAnimation} whileHover={hoverScale} onClick={() => setActivePage("Restoz")} className="p-2 sm:p-2.5 rounded-full bg-white/20 backdrop-blur-md hover:bg-white/30 transition-all"><FaSearch className="text-sm sm:text-lg" /></motion.button>
-            <motion.button whileTap={tapAnimation} whileHover={hoverScale} onClick={() => showToast('You have 3 new notifications', 'info')} className="p-2 sm:p-2.5 rounded-full bg-white/20 backdrop-blur-md hover:bg-white/30 transition-all relative">
-              <FaBell className="text-sm sm:text-lg" /><span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white animate-pulse" />
+            <motion.button whileTap={tapAnimation} whileHover={hoverScale} onClick={() => setShowNotifications(!showNotifications)} className="p-2 sm:p-2.5 rounded-full bg-white/20 backdrop-blur-md hover:bg-white/30 transition-all relative">
+              <FaBell className="text-sm sm:text-lg" />
+              {notifications.some(n => !n.read) && <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white animate-pulse" />}
             </motion.button>
+            <AnimatePresence>
+              {showNotifications && (
+                <NotificationList 
+                  notifications={notifications} 
+                  onClose={() => setShowNotifications(false)}
+                  onSelect={(n) => { setSelectedNotification(n); setNotifications(prev => prev.map(x => x.id === n.id ? { ...x, read: true } : x)); setShowNotifications(false); }}
+                />
+              )}
+            </AnimatePresence>
             <motion.button whileTap={tapAnimation} whileHover={hoverScale} onClick={() => setActivePage("More")} className="p-2 sm:p-2.5 rounded-full bg-white/20 backdrop-blur-md hover:bg-white/30 transition-all"><FaUserCircle className="text-sm sm:text-lg" /></motion.button>
+            <motion.button whileTap={tapAnimation} whileHover={hoverScale} onClick={handleLogout} className="p-2 sm:p-2.5 rounded-full bg-red-500/20 backdrop-blur-md hover:bg-red-500/30 transition-all border border-red-400/30" title="Sign Out">
+              <FaSignOutAlt className="text-sm sm:text-lg text-white" />
+            </motion.button>
           </div>
         </div>
       </header>
@@ -3389,6 +3538,7 @@ function IgifuDashboardMainApp() {
         {showExchangeModal && <WalletExchangeModal wallets={wallets} onExchange={handleWalletExchange} onClose={() => setShowExchangeModal(false)} />}
         {showShareModal && selectedSharePlan && <ShareMealModal plan={selectedSharePlan} onShare={handleShareMeal} onClose={() => { setShowShareModal(false); setSelectedSharePlan(null); }} />}
         {showPlanDetails && selectedPlanDetails && <PlanDetailsModal plan={selectedPlanDetails} onClose={() => { setShowPlanDetails(false); setSelectedPlanDetails(null); }} onUseMeal={handleUseMeal} />}
+        {selectedNotification && <NotificationDetailModal notification={selectedNotification} onClose={() => setSelectedNotification(null)} />}
 
         {/* Subscription Payment Modal */}
         {showOrderModal && selectedRestaurant && (

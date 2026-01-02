@@ -5,6 +5,9 @@ const cors = require('cors');
 const mysql = require('mysql2/promise');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
 require('dotenv').config();
 
 const app = express();
@@ -15,6 +18,24 @@ const PORT = process.env.PORT || 5000;
 // ====================================================================
 app.use(cors());
 app.use(express.json()); // Replaces bodyParser.json()
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Configure Multer for file uploads
+const uploadDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir);
+}
+
+const storage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        cb(null, 'uploads/');
+    },
+    filename: function (req, file, cb) {
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
+    }
+});
+const upload = multer({ storage: storage });
 
 // ====================================================================
 // 2. DATABASE CONNECTION POOL
@@ -503,6 +524,14 @@ app.put('/api/restaurant/meal-plans/:planId', verifyToken, isRestaurantOwner, as
     } catch (error) {
         res.status(500).json({ message: 'Failed to update meal plan.' });
     }
+});
+
+app.post('/api/restaurant/upload', verifyToken, isRestaurantOwner, upload.single('image'), (req, res) => {
+    if (!req.file) {
+        return res.status(400).json({ message: 'No file uploaded' });
+    }
+    const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
+    res.json({ url: fileUrl });
 });
 
 app.put('/api/restaurant/profile', verifyToken, isRestaurantOwner, async (req, res) => {

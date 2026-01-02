@@ -9,7 +9,8 @@ import {
   FaStar, FaEdit, FaCamera, FaPlus, FaMinus, FaFilter, FaDownload,
   FaChevronRight, FaChevronDown, FaCheckCircle, FaExclamationTriangle,
   FaSpinner, FaUserCircle, FaStore, FaReceipt, FaHistory, FaLock,
-  FaUnlock, FaKey, FaBars, FaHome, FaRunning, FaChartBar, FaInfoCircle
+  FaUnlock, FaKey, FaBars, FaHome, FaRunning, FaChartBar, FaInfoCircle,
+  FaCreditCard, FaCalendarAlt, FaTimesCircle, FaExclamationCircle
 } from "react-icons/fa";
 import { motion, AnimatePresence } from "framer-motion";
 import { tapAnimation } from "./Animations"; // Import tapAnimation from the new file
@@ -290,75 +291,6 @@ const OrderCard = ({ order, onApprove, onReject, onServe }) => {
   );
 };
 
-// ==================== SUBSCRIBER CARD ====================
-const SubscriberCard = ({ subscriber, onViewDetails }) => {
-  const remaining = subscriber.total_plates - subscriber.used_plates;
-  const progress = (subscriber.used_plates / subscriber.total_plates) * 100;
-  const isExpired = new Date(subscriber.expiry_date) < new Date();
-  const isLow = remaining <= 5 && !isExpired;
-
-  return (
-    <motion.div 
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm"
-    >
-      <div className="flex items-start justify-between mb-3">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center font-bold">
-            {subscriber.student_name.charAt(0)}
-          </div>
-          <div>
-            <h4 className="font-bold text-gray-800">{subscriber.student_name}</h4>
-            <p className="text-xs text-gray-500">{subscriber.student_phone}</p>
-          </div>
-        </div>
-        <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${
-          isExpired ? 'bg-red-100 text-red-700' :
-          isLow ? 'bg-yellow-100 text-yellow-700' :
-          'bg-green-100 text-green-700'
-        }`}>
-          {isExpired ? 'Expired' : isLow ? 'Low' : 'Active'}
-        </span>
-      </div>
-
-      <div className="mb-3">
-        <div className="flex justify-between text-sm mb-1">
-          <span className="text-gray-500">Plates Used</span>
-          <span className="text-gray-800 font-medium">{subscriber.used_plates} / {subscriber.total_plates}</span>
-        </div>
-        <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-          <div 
-            className={`h-full rounded-full ${progress >= 90 ? 'bg-red-500' : progress >= 70 ? 'bg-orange-500' : 'bg-green-500'}`}
-            style={{ width: `${progress}%` }}
-          />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-2 gap-2 mb-3 text-xs text-gray-600">
-        <div className="bg-gray-100 rounded-lg p-2">
-          <span>Plan:</span>
-          <span className="text-gray-800 ml-1 font-medium">{subscriber.plan_name}</span>
-        </div>
-        <div className="bg-gray-100 rounded-lg p-2">
-          <span>Expires:</span>
-          <span className={`ml-1 font-medium ${isExpired ? 'text-red-600' : 'text-gray-800'}`}>
-            {formatDate(subscriber.expiry_date)}
-          </span>
-        </div>
-      </div>
-
-      <motion.button
-        whileTap={tapAnimation}
-        onClick={() => onViewDetails(subscriber)}
-        className="w-full py-2 bg-gray-100 text-gray-700 rounded-lg font-medium flex items-center justify-center gap-2 hover:bg-gray-200"
-      >
-        <FaEye /> View Details
-      </motion.button>
-    </motion.div>
-  );
-};
-
 // ==================== DASHBOARD PAGE ====================
 const DashboardPage = ({ restaurant, orders, subscribers, onApproveOrder, onRejectOrder, onServeOrder }) => {
   const pendingOrders = orders.filter(o => o.status === 'pending');
@@ -556,176 +488,171 @@ const OrdersPage = ({ orders, onApproveOrder, onRejectOrder, onServeOrder }) => 
   );
 };
 
-// ==================== SUBSCRIBERS PAGE ====================
-const SubscribersPage = ({ subscribers, onUseMeal }) => {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filterStatus, setFilterStatus] = useState('all');
-  const [selectedSubscriber, setSelectedSubscriber] = useState(null);
-
-  // This is a placeholder. In a real app, you'd have a proper way
-  // to map a student to their meal plan. Here we just format it.
-  const formatSubscriberToPlan = (sub) => ({
-    ...sub,
-    totalMeals: sub.total_plates,
-    usedMeals: Array.from({length: sub.used_plates}, (_, i) => i), // Mocking used meals array
-    canUsePlate: sub.used_plates < sub.total_plates && new Date(sub.expiry_date) > new Date(),
-  });
+// ==================== SUBSCRIBERS PAGE (Merged Logic) ====================
+const SubscribersPage = ({ subscribers, loading, onUseMeal }) => {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('All');
 
   const filteredSubscribers = subscribers.filter(sub => {
-    const isExpired = new Date(sub.expiry_date) < new Date();
-    const matchesStatus = filterStatus === 'all' || 
-                         (filterStatus === 'active' && !isExpired) ||
-                         (filterStatus === 'expired' && isExpired);
-    const matchesSearch = sub.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         sub.phone.includes(searchQuery);
-    return matchesStatus && matchesSearch;
+    const matchesSearch = 
+      sub.student_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      sub.payment_phone?.includes(searchTerm) ||
+      sub.id.toString().includes(searchTerm);
+    
+    const matchesStatus = statusFilter === 'All' || sub.status === statusFilter;
+    return matchesSearch && matchesStatus;
   });
+
+  const getStatusColor = (status) => {
+    switch (status) {
+      case 'Active': return 'bg-green-100 text-green-700 border-green-200';
+      case 'Expired': return 'bg-red-100 text-red-700 border-red-200';
+      case 'Depleted': return 'bg-orange-100 text-orange-700 border-orange-200';
+      default: return 'bg-gray-100 text-gray-700 border-gray-200';
+    }
+  };
 
   return (
     <motion.div {...pageMotion} className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <h1 className="text-2xl font-bold text-gray-800">Subscribers</h1>
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-800">Subscribers</h1>
+          <p className="text-gray-500 text-sm mt-1">Manage your meal plan subscriptions</p>
+        </div>
         
-        <div className="relative">
-          <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search subscribers..."
-            className="w-full sm:w-64 bg-white text-gray-800 rounded-xl px-4 py-2.5 pl-10 border border-gray-300 focus:border-blue-500 focus:outline-none"
-          />
-        </div>
+        <button className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-xl text-gray-700 hover:bg-gray-50 transition-colors shadow-sm">
+          <FaDownload className="text-sm" />
+          <span className="text-sm font-medium">Export</span>
+        </button>
       </div>
 
-      {/* Filter Tabs */}
-      <div className="flex gap-2">
-        {['all', 'active', 'expired'].map(status => (
-          <button
-            key={status}
-            onClick={() => setFilterStatus(status)}
-            className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
-              filterStatus === status
-                ? 'bg-blue-600 text-white'
-                : 'bg-white text-gray-600 hover:bg-gray-100'
-            }`}
-          >
-            {status.charAt(0).toUpperCase() + status.slice(1)}
-          </button>
-        ))}
-      </div>
-
-      {/* Subscribers Grid */}
-      {filteredSubscribers.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredSubscribers.map(sub => (
-            <MealPlanCard
-              key={sub.id}
-              plan={formatSubscriberToPlan(sub)}
-              onUseMeal={(planId, mealIndex) => onUseMeal(sub.id, mealIndex)}
-              onViewDetails={() => setSelectedSubscriber(sub)}
-              // onShare is not needed for the portal, but kept for MealPlanCard compatibility
+      {/* Filters */}
+      <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-200">
+        <div className="flex flex-col md:flex-row gap-4">
+          <div className="flex-1 relative">
+            <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search by name, phone, or ID..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
             />
-          ))}
+          </div>
+          
+          <div className="flex items-center gap-2 overflow-x-auto pb-2 md:pb-0">
+            {['All', 'Active', 'Expired', 'Depleted'].map(status => (
+              <button
+                key={status}
+                onClick={() => setStatusFilter(status)}
+                className={`px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all ${
+                  statusFilter === status 
+                    ? 'bg-blue-600 text-white shadow-md shadow-blue-500/30' 
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                {status}
+              </button>
+            ))}
+          </div>
         </div>
-      ) : (
-        <div className="text-center py-12">
-          <FaUsers className="text-5xl text-gray-600 mx-auto mb-4" />
-          <h3 className="text-xl font-bold text-gray-500 mb-2">No subscribers found</h3>
-          <p className="text-gray-600">Try adjusting your filters or search query</p>
-        </div>
-      )}
+      </div>
 
-      {/* Subscriber Details Modal */}
-      <AnimatePresence>
-        {selectedSubscriber && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
-            onClick={() => setSelectedSubscriber(null)}
-          >
-            <motion.div
-              variants={modalMotion}
-              initial="initial"
-              animate="animate"
-              exit="exit"
-              onClick={e => e.stopPropagation()}
-              className="w-full max-w-md bg-white rounded-2xl p-6 border border-gray-200 shadow-xl"
-            >
-              <div className="flex items-start justify-between mb-6">
-                <div className="flex items-center gap-3">
-                  <div className="w-14 h-14 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xl font-bold">
-                    {selectedSubscriber.student_name.charAt(0)}
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-bold text-gray-800">{selectedSubscriber.student_name}</h3>
-                    <p className="text-sm text-gray-500">{selectedSubscriber.id}</p>
-                  </div>
-                </div>
-                <motion.button
-                  whileTap={tapAnimation}
-                  onClick={() => setSelectedSubscriber(null)}
-                  className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center text-gray-500 hover:text-gray-800"
-                >
-                  <FaTimes />
-                </motion.button>
-              </div>
-
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-gray-50 rounded-xl p-3">
-                    <FaPhone className="text-blue-400 mb-2" />
-                    <p className="text-xs text-gray-500">Phone</p>
-                    <p className="text-gray-800 font-medium">{selectedSubscriber.student_phone}</p>
-                  </div>
-                  <div className="bg-gray-50 rounded-xl p-3">
-                    <FaEnvelope className="text-green-400 mb-2" />
-                    <p className="text-xs text-gray-500">Email</p>
-                    <p className="text-gray-800 font-medium text-sm truncate">{selectedSubscriber.student_email}</p>
-                  </div>
-                </div>
-
-                <div className="bg-gray-50 rounded-xl p-4">
-                  <h4 className="text-sm font-medium text-gray-500 mb-3">Subscription Details</h4>
-                  <div className="space-y-2">
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Plan</span>
-                      <span className="text-gray-800 font-medium">{selectedSubscriber.plan_name}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Plates Used</span>
-                      <span className="text-gray-800 font-medium">{selectedSubscriber.used_plates} / {selectedSubscriber.total_plates}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Remaining</span>
-                      <span className="text-green-400 font-medium">{selectedSubscriber.total_plates - selectedSubscriber.used_plates}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Start Date</span>
-                      <span className="text-gray-800 font-medium">{formatDate(selectedSubscriber.start_date)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Expiry Date</span>
-                      <span className={`font-medium ${new Date(selectedSubscriber.expiry_date) < new Date() ? 'text-red-600' : 'text-gray-800'}`}>
-                        {formatDate(selectedSubscriber.expiry_date)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
-                  <div 
-                    className="h-full bg-blue-500 rounded-full"
-                    style={{ width: `${(selectedSubscriber.used_plates / selectedSubscriber.total_plates) * 100}%` }}
-                  />
-                </div>
-              </div>
-            </motion.div>
-          </motion.div>
+      {/* Table Content */}
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+        {loading ? (
+          <div className="p-12 flex justify-center items-center">
+            <FaSpinner className="animate-spin text-3xl text-blue-500" />
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="p-4 text-xs font-bold text-gray-500 uppercase tracking-wider"># ID</th>
+                  <th className="p-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Student</th>
+                  <th className="p-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Plan</th>
+                  <th className="p-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Plates Usage</th>
+                  <th className="p-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Price Paid</th>
+                  <th className="p-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Payment Info</th>
+                  <th className="p-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
+                  <th className="p-4 text-xs font-bold text-gray-500 uppercase tracking-wider">Expiry</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {filteredSubscribers.length > 0 ? (
+                  filteredSubscribers.map((sub) => (
+                    <motion.tr 
+                      key={sub.id}
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      className="hover:bg-gray-50/50 transition-colors"
+                    >
+                      <td className="p-4 text-sm font-mono text-gray-500">#{sub.id}</td>
+                      <td className="p-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-xs">
+                            {sub.student_name?.charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <div className="font-medium text-gray-900">{sub.student_name}</div>
+                            <div className="text-xs text-gray-500">{sub.student_email}</div>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="p-4">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                          {sub.plan_name}
+                        </span>
+                      </td>
+                      <td className="p-4">
+                        <div className="flex items-center gap-2">
+                          <div className="flex-1 w-24 h-2 bg-gray-100 rounded-full overflow-hidden">
+                            <div 
+                              className="h-full bg-blue-500 rounded-full"
+                              style={{ width: `${(sub.used_plates / sub.total_plates) * 100}%` }}
+                            />
+                          </div>
+                          <span className="text-xs font-medium text-gray-600">
+                            {sub.used_plates}/{sub.total_plates}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="p-4 text-sm font-medium text-gray-900">
+                        RWF {Number(sub.price_paid).toLocaleString()}
+                      </td>
+                      <td className="p-4">
+                        <div className="flex flex-col gap-1">
+                          <div className="flex items-center gap-1.5 text-xs text-gray-700">
+                            <FaCreditCard className="text-gray-400" />
+                            <span className="capitalize">{sub.payment_method}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-xs text-gray-500">
+                            <FaPhone className="text-gray-400" />
+                            <span>{sub.payment_phone || '-'}</span>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="p-4">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${getStatusColor(sub.status)}`}>
+                          {sub.status}
+                        </span>
+                      </td>
+                      <td className="p-4 text-sm text-gray-500">
+                        {formatDate(sub.expiry_date)}
+                      </td>
+                    </motion.tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan="8" className="p-8 text-center text-gray-500">No subscribers found matching your criteria.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         )}
-      </AnimatePresence>
+      </div>
     </motion.div>
   );
 };
@@ -1519,32 +1446,31 @@ function RestaurantPortal() {
   const [subscribers, setSubscribers] = useState([]);
   const [mealPlans, setMealPlans] = useState([]); 
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [loadingSubscribers, setLoadingSubscribers] = useState(true);
 
   const navigate = useNavigate();
 
   const fetchData = async () => {
     try {
+      setLoadingSubscribers(true);
       const response = await api.get('/restaurant/dashboard-data');
       const { orders, subscribers, mealPlans } = response.data;
       setOrders(orders);
       setSubscribers(subscribers);
-        setIsProfileComplete(true);
+      setIsProfileComplete(true);
       setMealPlans(mealPlans);
-      
-      // Also update local restaurant user data if endpoint supports it, otherwise rely on local storage
-      // For this example, we assume dashboard-data might return updated user info too, or we assume
-      // the SettingsPage update handles the local storage sync.
     } catch (error) {
       toast.error("Failed to load restaurant data.");
       console.error("Data fetch error:", error);
       if (error.response?.status === 401) {
-        handleLogout(); // If token is invalid, log out
+        handleLogout(); 
       }
+    } finally {
+      setLoadingSubscribers(false);
     }
   };
 
   useEffect(() => {
-    // Check for saved session
     const user = JSON.parse(localStorage.getItem('user'));
     const token = localStorage.getItem('token');
 
@@ -1553,13 +1479,11 @@ function RestaurantPortal() {
       setRestaurant(user);
       fetchData();
 
-      // Check if the restaurant profile is complete. If not, navigate to settings.
       const isProfileComplete = user.description && user.campus && user.location_sector && user.location_district && user.category;
       if (!isProfileComplete) {
         setActivePage('settings');
       }
     } else {
-      // If no valid session, ensure the user is logged out.
       setIsLoggedIn(false);
       setRestaurant(null);
     }
@@ -1568,21 +1492,17 @@ function RestaurantPortal() {
   const handleLogin = (userData, token, needsProfileCompletion = false) => {
     localStorage.setItem('user', JSON.stringify(userData));
     localStorage.setItem('token', token);
-      setRestaurant(userData);
+    setRestaurant(userData);
     setIsLoggedIn(true);
     if (needsProfileCompletion) {
       setActivePage('settings');
-      }
-    localStorage.setItem('token', token);
+    }
     if (!userData.description || !userData.campus || !userData.location_sector || !userData.location_district || !userData.category) {
-      // Redirect to complete profile if details are missing
       setIsProfileComplete(false);
-        setRestaurant(userData);
-        setActivePage('settings');
+      setActivePage('settings');
     } else {
       setIsProfileComplete(true);
-        setRestaurant(userData);
-        }
+    }
     fetchData();
   };
 
@@ -1598,19 +1518,15 @@ function RestaurantPortal() {
     try {
       await api.patch(`/restaurant/orders/${orderId}/status`, { status });
       toast.success(`Order marked as ${status}.`);
-      fetchData(); // Re-fetch all data to ensure consistency
+      fetchData(); 
     } catch (error) {
       toast.error(`Failed to update order status.`);
     }
   };
 
-  const handleUseMeal = async (subscriptionId) => { // Only subscriptionId is needed for backend
+  const handleUseMeal = async (subscriptionId) => {
     try {
-      await api.post('/restaurant/subscribers/use-meal', {
-        subscriptionId: subscriptionId,
-        // The backend calculates meal_index automatically based on used_plates
-        // restaurantId is automatically added by the isRestaurantOwner middleware
-      });
+      await api.post('/restaurant/subscribers/use-meal', { subscriptionId });
       toast.success(`Meal used for subscriber ${subscriptionId}`);
       fetchData();
     } catch (error) {
@@ -1618,7 +1534,6 @@ function RestaurantPortal() {
     }
   };
 
-  // Handler for updating meal plans from the management page
   const handleUpdatePlans = async (planData) => {
     try {
       if (planData.id) {
@@ -1653,7 +1568,6 @@ function RestaurantPortal() {
       <Toaster position="top-center" />
       {/* Sidebar - Desktop */}
       <aside className="hidden lg:flex flex-col w-64 bg-white border-r border-gray-200 p-4">
-        {/* Logo */}
         <div className="flex items-center gap-3 mb-8">
           <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center">
             <FaStore className="text-white" />
@@ -1664,7 +1578,6 @@ function RestaurantPortal() {
           </div>
         </div>
 
-        {/* Nav Items */}
         <nav className="flex-1 space-y-2">
           {navItems.map(item => (
             <motion.button
@@ -1688,7 +1601,6 @@ function RestaurantPortal() {
           ))}
         </nav>
 
-        {/* Restaurant Info */}
         <div className="mt-auto pt-4 border-t border-gray-200">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl overflow-hidden bg-gray-200">
@@ -1706,22 +1618,18 @@ function RestaurantPortal() {
       <AnimatePresence>
         {sidebarOpen && (
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="fixed inset-0 z-40 bg-black/70 lg:hidden"
             onClick={() => setSidebarOpen(false)}
           />
         )}
       </AnimatePresence>
 
-      {/* Mobile Sidebar */}
+      {/* Mobile Sidebar Content */}
       <AnimatePresence>
         {sidebarOpen && (
           <motion.aside
-            initial={{ x: -280 }}
-            animate={{ x: 0 }}
-            exit={{ x: -280 }}
+            initial={{ x: -280 }} animate={{ x: 0 }} exit={{ x: -280 }}
             className="fixed inset-y-0 left-0 z-50 w-64 bg-white border-r border-gray-200 p-4 lg:hidden"
           >
             <div className="flex items-center justify-between mb-8">
@@ -1731,34 +1639,15 @@ function RestaurantPortal() {
                 </div>
                 <h1 className="text-gray-800 font-bold">Igifu</h1>
               </div>
-              <motion.button
-                whileTap={tapAnimation}
-                onClick={() => setSidebarOpen(false)}
-                className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center text-gray-500"
-              >
+              <motion.button whileTap={tapAnimation} onClick={() => setSidebarOpen(false)} className="w-8 h-8 bg-gray-100 rounded-lg flex items-center justify-center text-gray-500">
                 <FaTimes />
               </motion.button>
             </div>
-
             <nav className="space-y-2">
               {navItems.map(item => (
-                <motion.button
-                  key={item.id}
-                  whileTap={tapAnimation}
-                  onClick={() => { setActivePage(item.id); setSidebarOpen(false); }}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all ${
-                    activePage === item.id
-                      ? 'bg-blue-100 text-blue-600'
-                      : 'text-gray-500 hover:text-gray-800 hover:bg-gray-100'
-                  }`}
-                >
-                  <item.icon />
-                  <span>{item.label}</span>
-                  {item.badge > 0 && (
-                    <span className="ml-auto px-2 py-0.5 bg-red-100 text-red-600 rounded-full text-xs">
-                      {item.badge}
-                    </span>
-                  )}
+                <motion.button key={item.id} whileTap={tapAnimation} onClick={() => { setActivePage(item.id); setSidebarOpen(false); }} className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-all ${activePage === item.id ? 'bg-blue-100 text-blue-600' : 'text-gray-500 hover:text-gray-800 hover:bg-gray-100'}`}>
+                  <item.icon /> <span>{item.label}</span>
+                  {item.badge > 0 && <span className="ml-auto px-2 py-0.5 bg-red-100 text-red-600 rounded-full text-xs">{item.badge}</span>}
                 </motion.button>
               ))}
             </nav>
@@ -1768,91 +1657,45 @@ function RestaurantPortal() {
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-h-screen">
-        {/* Top Header */}
         <header className="bg-white border-b border-gray-200 px-4 py-3 flex items-center justify-between sticky top-0 z-30">
           <div className="flex items-center gap-3">
-            <motion.button
-              whileTap={tapAnimation}
-              onClick={() => setSidebarOpen(true)}
-              className="lg:hidden w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center text-gray-500"
-            >
+            <motion.button whileTap={tapAnimation} onClick={() => setSidebarOpen(true)} className="lg:hidden w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center text-gray-500">
               <FaBars />
             </motion.button>
             <h1 className="text-xl font-bold text-gray-800 capitalize">{activePage}</h1>
           </div>
-
           <div className="flex items-center gap-3">
-            <motion.button
-              whileTap={tapAnimation}
-              className="relative w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center text-gray-500 hover:text-gray-800"
-            >
-              <FaBell />
-              <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-white text-[10px] flex items-center justify-center">
-                3
-              </span>
+            <motion.button whileTap={tapAnimation} className="relative w-10 h-10 bg-gray-100 rounded-xl flex items-center justify-center text-gray-500 hover:text-gray-800">
+              <FaBell /><span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-white text-[10px] flex items-center justify-center">3</span>
             </motion.button>
             <div className="w-10 h-10 rounded-xl overflow-hidden bg-gray-200">
-              <img src={restaurant.image_url || `https://picsum.photos/seed/${restaurant.id}/200`} alt={restaurant.username} className="w-full h-full object-cover" />
+              <img src={restaurant?.image_url || `https://picsum.photos/seed/${restaurant?.id}/200`} alt="Avatar" className="w-full h-full object-cover" />
             </div>
           </div>
         </header>
 
-        {/* Page Content */}
         <main className="flex-1 p-4 lg:p-6 overflow-auto">
           <AnimatePresence mode="wait">
             {activePage === 'dashboard' && (
-              <DashboardPage 
-                key="dashboard"
-                restaurant={restaurant}
-                orders={orders}
-                subscribers={subscribers}
-                onApproveOrder={(id) => handleUpdateOrderStatus(id, 'approved')}
-                onRejectOrder={(id) => handleUpdateOrderStatus(id, 'rejected')}
-                onServeOrder={(id) => handleUpdateOrderStatus(id, 'served')}
-              />
+              <DashboardPage key="dashboard" restaurant={restaurant} orders={orders} subscribers={subscribers} onApproveOrder={(id) => handleUpdateOrderStatus(id, 'approved')} onRejectOrder={(id) => handleUpdateOrderStatus(id, 'rejected')} onServeOrder={(id) => handleUpdateOrderStatus(id, 'served')} />
             )}
             {activePage === 'orders' && (
-              <OrdersPage 
-                key="orders"
-                orders={orders}
-                onApproveOrder={(id) => handleUpdateOrderStatus(id, 'approved')}
-                onRejectOrder={(id) => handleUpdateOrderStatus(id, 'rejected')}
-                onServeOrder={(id) => handleUpdateOrderStatus(id, 'served')}
-              />
+              <OrdersPage key="orders" orders={orders} onApproveOrder={(id) => handleUpdateOrderStatus(id, 'approved')} onRejectOrder={(id) => handleUpdateOrderStatus(id, 'rejected')} onServeOrder={(id) => handleUpdateOrderStatus(id, 'served')} />
             )}
             {activePage === 'usage' && (
-              <MealUsagePage
-                key="usage"
-                onMealUsed={fetchData}
-              />
+              <MealUsagePage key="usage" onUseMeal={handleUseMeal} />
             )}
             {activePage === 'subscribers' && (
-              <SubscribersPage 
-                key="subscribers"
-                subscribers={subscribers}
-                onUseMeal={handleUseMeal}
-              />
+              <SubscribersPage key="subscribers" subscribers={subscribers} loading={loadingSubscribers} onUseMeal={handleUseMeal} />
             )}
             {activePage === 'plans' && (
-              <MealPlansPage 
-                key="plans"
-                initialPlans={mealPlans}
-                onUpdatePlans={handleUpdatePlans}
-              />
+              <MealPlansPage key="plans" initialPlans={mealPlans} onUpdatePlans={handleUpdatePlans} />
             )}
             {activePage === 'analytics' && (
-              <AnalyticsPage 
-                key="analytics"
-                orders={orders}
-              />
+              <AnalyticsPage key="analytics" orders={orders} />
             )}
             {activePage === 'settings' && (
-              <SettingsPage 
-                key="settings"
-                restaurant={restaurant}
-                onLogout={handleLogout}
-                onUpdate={fetchData} // Pass callback to refresh data
-              />
+              <SettingsPage key="settings" restaurant={restaurant} onLogout={handleLogout} onUpdate={fetchData} />
             )}
           </AnimatePresence>
         </main>
